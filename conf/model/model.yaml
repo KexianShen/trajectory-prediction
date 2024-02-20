@@ -1,0 +1,16 @@
+name: trajectory-prediction
+phase: all
+
+target:
+  _target_: src.model.trainer.Trainer
+  agent_dim: 4
+  dim: 128
+  encoder_depth: 4
+  num_heads: 8
+  mtm_checkpoint: ${mtm_checkpoint}
+  mrm_checkpoint: ${mrm_checkpoint}
+  lr: ${lr}
+  fine_tuning_ratio: ${fine_tuning_ratio}
+  weight_decay: ${weight_decay}
+  epochs: ${epochs}
+  warmup_epochs: ${warmup_epochs}

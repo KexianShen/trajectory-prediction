@@ -1,0 +1,5 @@
+pytorch-lightning
+hydra-core
+av2
+ray
+tensorboard

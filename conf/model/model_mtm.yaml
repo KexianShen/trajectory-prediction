@@ -1,0 +1,13 @@
+name: trajectory-prediction
+phase: mtm
+
+target:
+  _target_: src.model.trainer_mtm.Trainer
+  agent_dim: 4
+  dim: 128
+  encoder_depth: 4
+  num_heads: 8
+  lr: ${lr}
+  weight_decay: ${weight_decay}
+  epochs: ${epochs}
+  warmup_epochs: ${warmup_epochs}

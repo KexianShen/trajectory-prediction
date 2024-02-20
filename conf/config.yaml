@@ -1,0 +1,39 @@
+defaults:
+  - hydra: default
+  - datamodule: av2
+  - model: model
+  - _self_
+
+seed: 2333
+monitor: val/loss
+save_top_k: 2
+
+data_root:
+checkpoint:
+mrm_checkpoint:
+mtm_checkpoint:
+output: ${model.name}-${model.phase}
+
+# trainer
+num_workers: 8
+gpus: 1
+sync_bn: true
+batch_size: 8
+epochs: 40
+warmup_epochs: 10
+fast_dev_run: 0
+
+# optimizer
+lr: 0.001
+fine_tuning_ratio: 0.001
+weight_decay: 1e-4
+gradient_clip_val: 5
+gradient_clip_algorithm: norm
+
+limit_train_batches:
+limit_val_batches:
+limit_test_batches:
+log_model: all
+test: false
+
+wandb: disable
