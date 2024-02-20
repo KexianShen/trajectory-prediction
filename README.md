@@ -1,5 +1,10 @@
 # Trajectory Prediction
 
+## Highlight
+
+- Simple and Lightweight: Requires no additional CUDA libraries, ensuring simplicity and ease of use.
+- Efficient on Embedded Devices: Designed to be friendly and effective on embedded devices.
+
 <p align="center">
     <img src="https://raw.githubusercontent.com/KexianShen/trajectory-prediction/media/mrm.png?raw=true"><br/>
     <em>Masked road model</em>
@@ -14,11 +19,6 @@
     <img src="https://raw.githubusercontent.com/KexianShen/trajectory-prediction/media/all.png?raw=true"><br/>
     <em>Trajectory prediction</em>
 </p>
-
-## Highlight
-
-- Simple and Lightweight: Requires no additional CUDA libraries, ensuring simplicity and ease of use.
-- Efficient on Embedded Devices: Designed to be friendly and effective on embedded devices.
 
 ## Getting Started
 
