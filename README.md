@@ -67,7 +67,7 @@ python train.py model=model_mrm epochs=20
 python train.py model=model_mtm epochs=20
 
 # Set mrm_checkpoint, mtm_checkpoint in conf/config.yaml for combined training
-python train.py
+python train.py monitor=val_AvgMinFDE
 ```
 
 ## Eval
