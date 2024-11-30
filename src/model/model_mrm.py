@@ -89,7 +89,9 @@ class ModelMRM(nn.Module):
             )
             idx_mask.append(idx)
         idx_mask = torch.cat(idx_mask, dim=0)
-        masked_tokens[idx_mask[:, 0], idx_mask[:, 1], idx_mask[:, 2]] = mask_token
+        masked_tokens[idx_mask[:, 0], idx_mask[:, 1], idx_mask[:, 2]] = (
+            mask_token.type_as(masked_tokens)
+        )
         return masked_tokens, idx_mask
 
     def forward(self, data):
