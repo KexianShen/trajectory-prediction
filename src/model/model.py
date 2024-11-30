@@ -77,7 +77,9 @@ class Model(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def load_from_pretrain(self, mtm_ckpt_path, mrm_ckpt_path):
-        mtm_ckpt = torch.load(mtm_ckpt_path, map_location="cpu")["state_dict"]
+        mtm_ckpt = torch.load(mtm_ckpt_path, map_location="cpu", weights_only=True)[
+            "state_dict"
+        ]
         state_dict = {
             k[len("net.tempo_net.") :]: v
             for k, v in mtm_ckpt.items()
@@ -92,7 +94,9 @@ class Model(nn.Module):
         }
         self.agent_pos_embed.load_state_dict(state_dict=state_dict, strict=False)
 
-        mrm_ckpt = torch.load(mrm_ckpt_path, map_location="cpu")["state_dict"]
+        mrm_ckpt = torch.load(mrm_ckpt_path, map_location="cpu", weights_only=True)[
+            "state_dict"
+        ]
         state_dict = {
             k[len("net.spa_net.") :]: v
             for k, v in mrm_ckpt.items()

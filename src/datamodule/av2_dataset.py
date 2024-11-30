@@ -38,7 +38,7 @@ class Av2Dataset(Dataset):
 
     def __getitem__(self, index: int):
         if self.load:
-            data = torch.load(self.file_list[index])
+            data = torch.load(self.file_list[index], weights_only=False)
         else:
             data = self.extractor.get_data(self.file_list[index])
 
