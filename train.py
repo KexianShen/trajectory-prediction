@@ -2,12 +2,12 @@ import os
 
 import hydra
 import pytorch_lightning as pl
+import torch
 from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from pytorch_lightning.callbacks import (
     LearningRateMonitor,
     ModelCheckpoint,
-    RichModelSummary,
     RichProgressBar,
 )
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
@@ -40,7 +40,6 @@ def main(conf):
             save_top_k=conf.save_top_k,
             save_last=True,
         ),
-        RichModelSummary(max_depth=1),
         RichProgressBar(),
         LearningRateMonitor(logging_interval="epoch"),
     ]
@@ -55,6 +54,7 @@ def main(conf):
         max_epochs=conf.epochs,
         accelerator="gpu",
         devices=conf.gpus,
+        precision=conf.precision,
         strategy="ddp_find_unused_parameters_false" if conf.gpus > 1 else "auto",
         callbacks=callbacks,
         limit_train_batches=conf.limit_train_batches,
@@ -69,5 +69,5 @@ def main(conf):
 
 
 if __name__ == "__main__":
-    # torch.set_float32_matmul_precision('medium' | 'high')
+    torch.set_float32_matmul_precision("high")  # maximize Tensor Core usage
     main()
