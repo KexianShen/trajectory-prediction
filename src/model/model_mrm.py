@@ -17,12 +17,12 @@ class ModelMRM(nn.Module):
         self.spa_net = SpaNet(
             lane_dim=lane_dim, num_layers=encoder_depth, num_heads=num_heads
         )
-        self.pos_embed = nn.Sequential(
+        self.pos_emb = nn.Sequential(
             nn.Linear(4, embed_dim),
             nn.GELU(),
             nn.Linear(embed_dim, embed_dim),
         )
-        self.lane_type_embed = nn.Parameter(torch.Tensor(1, 1, embed_dim))
+        self.lane_type_emb = nn.Parameter(torch.Tensor(1, 1, embed_dim))
         self.mrm_mask_token = nn.Parameter(torch.Tensor(1, embed_dim))
         self.decoder = nn.Sequential(
             nn.Linear(embed_dim, embed_dim * 4),
@@ -33,7 +33,7 @@ class ModelMRM(nn.Module):
         self.initialize_weights()
 
     def initialize_weights(self):
-        nn.init.normal_(self.lane_type_embed, std=0.02)
+        nn.init.normal_(self.lane_type_emb, std=0.02)
         nn.init.normal_(self.mrm_mask_token, std=0.02)
 
         self.apply(self._init_weights)
@@ -109,9 +109,9 @@ class ModelMRM(nn.Module):
             ],
             dim=-1,
         )
-        pos_embed = self.pos_embed(pos_feat)
-        lane_feat += pos_embed.unsqueeze(2)
-        lane_feat += self.lane_type_embed
+        pos_emb = self.pos_emb(pos_feat)
+        lane_feat += pos_emb.unsqueeze(2)
+        lane_feat += self.lane_type_emb
 
         masked_tokens, idx_mask = self.lane_random_masking(
             lane_feat, lane_padding_mask, self.mrm_mask_token

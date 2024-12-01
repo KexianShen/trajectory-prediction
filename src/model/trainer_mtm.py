@@ -10,10 +10,10 @@ from .model_mtm import ModelMTM
 class Trainer(pl.LightningModule):
     def __init__(
         self,
-        agent_dim=4,
-        dim=128,
-        encoder_depth=4,
-        num_heads=8,
+        agent_dim: int = 4,
+        dim: int = 128,
+        encoder_depth: int = 4,
+        num_heads: int = 8,
         lr: float = 1e-3,
         warmup_epochs: int = 10,
         epochs: int = 60,

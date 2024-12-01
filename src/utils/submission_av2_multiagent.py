@@ -53,9 +53,7 @@ class SubmissionAv2MultiAgent:
             .cpu()
             .numpy()
         )
-        import pdb
 
-        pdb.set_trace()
         if not normalized_probability:
             probability = torch.softmax(probability.double(), dim=-1)
 

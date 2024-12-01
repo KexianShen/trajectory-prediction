@@ -205,8 +205,6 @@ class Trainer(pl.LightningModule):
             nn.LayerNorm,
             nn.Embedding,
         )
-        pretrain = set()
-        pretrain_module_names = ["tempo_net", "spa_net"]
         for module_name, module in self.named_modules():
             for param_name, param in module.named_parameters():
                 full_param_name = (
@@ -221,9 +219,6 @@ class Trainer(pl.LightningModule):
                         no_decay.add(full_param_name)
                 elif not ("weight" in param_name or "bias" in param_name):
                     no_decay.add(full_param_name)
-                for pretrain_module_name in pretrain_module_names:
-                    if pretrain_module_name in param_name:
-                        pretrain.add(full_param_name)
         param_dict = {
             param_name: param for param_name, param in self.named_parameters()
         }
@@ -234,38 +229,16 @@ class Trainer(pl.LightningModule):
         optim_groups = [
             {
                 "params": [
-                    param_dict[param_name]
-                    for param_name in sorted(list(decay))
-                    if param_name not in pretrain
+                    param_dict[param_name] for param_name in sorted(list(decay))
                 ],
                 "lr": self.lr,
                 "weight_decay": self.weight_decay,
             },
             {
                 "params": [
-                    param_dict[param_name]
-                    for param_name in sorted(list(no_decay))
-                    if param_name not in pretrain
+                    param_dict[param_name] for param_name in sorted(list(no_decay))
                 ],
                 "lr": self.lr,
-                "weight_decay": 0.0,
-            },
-            {
-                "params": [
-                    param_dict[param_name]
-                    for param_name in sorted(list(decay))
-                    if param_name in pretrain
-                ],
-                "lr": self.lr * self.fine_tuning_ratio,
-                "weight_decay": self.weight_decay,
-            },
-            {
-                "params": [
-                    param_dict[param_name]
-                    for param_name in sorted(list(no_decay))
-                    if param_name in pretrain
-                ],
-                "lr": self.lr * self.fine_tuning_ratio,
                 "weight_decay": 0.0,
             },
         ]

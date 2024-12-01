@@ -12,9 +12,7 @@ class Av2DataModule(LightningDataModule):
         self,
         data_root: str,
         data_folder: str,
-        train_batch_size: int = 32,
-        val_batch_size: int = 32,
-        test_batch_size: int = 32,
+        batch_size: int = 32,
         shuffle: bool = True,
         num_workers: int = 8,
         pin_memory: bool = True,
@@ -23,9 +21,7 @@ class Av2DataModule(LightningDataModule):
         super(Av2DataModule, self).__init__()
         self.data_root = Path(data_root)
         self.data_folder = data_folder
-        self.batch_size = train_batch_size
-        self.val_batch_size = val_batch_size
-        self.test_batch_size = test_batch_size
+        self.batch_size = batch_size
         self.shuffle = shuffle
         self.num_workers = num_workers
         self.pin_memory = pin_memory
@@ -57,7 +53,7 @@ class Av2DataModule(LightningDataModule):
     def val_dataloader(self):
         return TorchDataLoader(
             self.val_dataset,
-            batch_size=self.val_batch_size,
+            batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
@@ -67,7 +63,7 @@ class Av2DataModule(LightningDataModule):
     def test_dataloader(self):
         return TorchDataLoader(
             self.test_dataset,
-            batch_size=self.test_batch_size,
+            batch_size=self.batch_size,
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,

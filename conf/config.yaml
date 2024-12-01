@@ -20,6 +20,7 @@ gpus: 1
 sync_bn: true
 batch_size: 8
 epochs: 40
+precision: bf16-mixed
 warmup_epochs: 10
 fast_dev_run: 0
 

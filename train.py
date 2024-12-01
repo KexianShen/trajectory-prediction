@@ -22,7 +22,7 @@ def main(conf):
 
     if conf.wandb != "disable":
         logger = WandbLogger(
-            project="Forecast-MAE",
+            project="trajectory_prediction",
             name=conf.output,
             mode=conf.wandb,
             log_model="all",
