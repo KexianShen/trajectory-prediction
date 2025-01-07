@@ -37,7 +37,7 @@ pip install -r requirements.txt
 
 ```bash
 # Prepare data
-# Download from: https://www.argoverse.org/av2.html#download-link
+# Manually download from: https://www.argoverse.org/av2.html#download-link
 data_root
 ├── train
 │   ├── 0000b0f9-99f9-4a1f-a231-5be9e4c523f7
@@ -52,6 +52,15 @@ data_root
 │   ├── 0008c251-e9b0-4708-b762-b15cb6effc27
 │   ├── ...
 ```
+
+> [!TIP]
+>
+> Download data with `s5cmd`.
+> ```bash
+> conda install s5cmd -c conda-forge
+>
+> s5cmd --no-sign-request cp "s3://argoverse/datasets/av2/motion-forecasting/*" <data_root>
+> ```
 
 ```bash
 # Set data_root in conf/config.yaml
