@@ -10,6 +10,8 @@ from src.metrics import ActorMR, AvgMinADE, AvgMinFDE
 from src.utils.optim import WarmupCosLR
 from src.utils.submission_av2_multiagent import SubmissionAv2MultiAgent
 
+from .layers.attn import MHCA, MHSA, FeedForward, RMSNorm
+from .layers.rope_attn import RoPEMHSA
 from .model import Model
 
 
@@ -50,8 +52,8 @@ class Trainer(pl.LightningModule):
             num_modals=num_modals,
         )
 
-        if mtm_checkpoint is not None and mrm_checkpoint is not None:
-            self.net.load_from_pretrain(mtm_checkpoint, mrm_checkpoint)
+        # if mtm_checkpoint is not None and mrm_checkpoint is not None:
+        #     self.net.load_from_pretrain(mtm_checkpoint, mrm_checkpoint)
 
         metrics = MetricCollection([AvgMinADE(), AvgMinFDE(), ActorMR()])
         self.val_metrics = metrics.clone(prefix="val_")
@@ -175,7 +177,6 @@ class Trainer(pl.LightningModule):
     def on_test_start(self) -> None:
         save_dir = Path("./submission")
         save_dir.mkdir(exist_ok=True)
-        # timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M")
         self.submission_handler = SubmissionAv2MultiAgent(save_dir=save_dir)
 
     def test_step(self, data, batch_idx) -> None:
@@ -196,6 +197,10 @@ class Trainer(pl.LightningModule):
             nn.MultiheadAttention,
             nn.LSTM,
             nn.GRU,
+            MHCA,
+            MHSA,
+            FeedForward,
+            RoPEMHSA,
         )
         blacklist_weight_modules = (
             nn.BatchNorm1d,
@@ -204,6 +209,7 @@ class Trainer(pl.LightningModule):
             nn.SyncBatchNorm,
             nn.LayerNorm,
             nn.Embedding,
+            RMSNorm,
         )
         for module_name, module in self.named_modules():
             for param_name, param in module.named_parameters():

@@ -25,8 +25,8 @@ class Model(nn.Module):
             num_layers=encoder_depth,
             num_heads=num_heads,
             dim=dim,
+            seq_len=50,
         )
-        self.tempo_net.freqs_cis = self.tempo_net.freqs_cis[:50]
         self.spa_net = SpaNet(
             lane_dim=lane_dim, num_layers=encoder_depth, num_heads=num_heads, dim=dim
         )
@@ -71,41 +71,41 @@ class Model(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def load_from_pretrain(self, mtm_ckpt_path, mrm_ckpt_path):
-        mtm_ckpt = torch.load(mtm_ckpt_path, map_location="cpu", weights_only=True)[
-            "state_dict"
-        ]
-        state_dict = {
-            k[len("net.tempo_net.") :]: v
-            for k, v in mtm_ckpt.items()
-            if k.startswith("net.tempo_net.")
-        }
-        self.tempo_net.load_state_dict(state_dict=state_dict, strict=True)
-        state_dict = {
-            k[len("net.pos_emb.") :]: v
-            for k, v in mtm_ckpt.items()
-            if k.startswith("net.pos_emb.")
-        }
-        self.agent_pos_emb.load_state_dict(state_dict=state_dict, strict=True)
-        self.agent_type_emb.data.copy_(mtm_ckpt["net.agent_type_emb"])
+    # def load_from_pretrain(self, mtm_ckpt_path, mrm_ckpt_path):
+    #     mtm_ckpt = torch.load(mtm_ckpt_path, map_location="cpu", weights_only=True)[
+    #         "state_dict"
+    #     ]
+    #     state_dict = {
+    #         k[len("net.tempo_net.") :]: v
+    #         for k, v in mtm_ckpt.items()
+    #         if k.startswith("net.tempo_net.")
+    #     }
+    #     self.tempo_net.load_state_dict(state_dict=state_dict, strict=True)
+    #     state_dict = {
+    #         k[len("net.pos_emb.") :]: v
+    #         for k, v in mtm_ckpt.items()
+    #         if k.startswith("net.pos_emb.")
+    #     }
+    #     self.agent_pos_emb.load_state_dict(state_dict=state_dict, strict=True)
+    #     self.agent_type_emb.data.copy_(mtm_ckpt["net.agent_type_emb"])
 
-        mrm_ckpt = torch.load(mrm_ckpt_path, map_location="cpu", weights_only=True)[
-            "state_dict"
-        ]
-        state_dict = {
-            k[len("net.spa_net.") :]: v
-            for k, v in mrm_ckpt.items()
-            if k.startswith("net.spa_net.")
-        }
-        self.spa_net.load_state_dict(state_dict=state_dict, strict=True)
-        self.lane_type_emb.data.copy_(mrm_ckpt["net.lane_type_emb"])
-        state_dict = {
-            k[len("net.pos_emb.") :]: v
-            for k, v in mrm_ckpt.items()
-            if k.startswith("net.pos_emb.")
-        }
-        self.lane_pos_emb.load_state_dict(state_dict=state_dict, strict=True)
-        return self
+    #     mrm_ckpt = torch.load(mrm_ckpt_path, map_location="cpu", weights_only=True)[
+    #         "state_dict"
+    #     ]
+    #     state_dict = {
+    #         k[len("net.spa_net.") :]: v
+    #         for k, v in mrm_ckpt.items()
+    #         if k.startswith("net.spa_net.")
+    #     }
+    #     self.spa_net.load_state_dict(state_dict=state_dict, strict=True)
+    #     self.lane_type_emb.data.copy_(mrm_ckpt["net.lane_type_emb"])
+    #     state_dict = {
+    #         k[len("net.pos_emb.") :]: v
+    #         for k, v in mrm_ckpt.items()
+    #         if k.startswith("net.pos_emb.")
+    #     }
+    #     self.lane_pos_emb.load_state_dict(state_dict=state_dict, strict=True)
+    #     return self
 
     def forward(self, data):
         agent_feat = torch.cat(

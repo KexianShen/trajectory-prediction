@@ -2,7 +2,7 @@ import torch
 from torch import nn
 
 from .attn import RMSNorm
-from .rope_attn import RoPESelfAttnLayer, precompute_freqs_cis
+from .rope_attn import RoPESelfAttnLayer, compute_cos_sin_emb
 
 
 class ConvTokenizer(nn.Module):
@@ -30,7 +30,7 @@ class SpaNet(nn.Module):
         num_heads: int = 8,
         dim: int = 128,
         norm_eps: float = 1e-5,
-        max_t_len: int = 20,
+        seq_len: int = 20,
     ):
         super().__init__()
         self.num_layers = num_layers
@@ -40,7 +40,9 @@ class SpaNet(nn.Module):
         for _ in range(num_layers):
             self.layers.append(RoPESelfAttnLayer(num_heads, dim, norm_eps))
         self.norm = RMSNorm(dim, eps=norm_eps)
-        self.freqs_cis = precompute_freqs_cis(dim // num_heads, max_t_len)
+        cos_emb, sin_emb = compute_cos_sin_emb(dim, seq_len=seq_len)
+        self.register_buffer("cos_emb", cos_emb)
+        self.register_buffer("sin_emb", sin_emb)
 
     def forward(self, map_feat: torch.Tensor, agent_feat: torch.Tensor = None):
         if agent_feat is not None:
@@ -48,10 +50,9 @@ class SpaNet(nn.Module):
         else:
             x = map_feat
 
-        self.freqs_cis = self.freqs_cis.to(x.device)
         mask = None
 
         for layer in self.layers:
-            x = layer(x, self.freqs_cis, mask)
+            x = layer(x, self.cos_emb, self.sin_emb, mask)
         x = self.norm(x)
         return x
