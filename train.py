@@ -63,7 +63,7 @@ def main(conf):
         fast_dev_run=conf.fast_dev_run,
     )
 
-    model = instantiate(conf.model.target)
+    model = instantiate(conf.model.target, _recursive_=False)
     datamodule = instantiate(conf.datamodule)
     trainer.fit(model, datamodule, ckpt_path=conf.checkpoint)
 

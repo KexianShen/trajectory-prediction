@@ -3,11 +3,21 @@ phase: mrm
 
 target:
   _target_: src.model.trainer_mrm.Trainer
-  lane_dim: 2
-  dim: 128
-  encoder_depth: 4
-  num_heads: 8
-  lr: ${lr}
-  weight_decay: ${weight_decay}
-  epochs: ${epochs}
-  warmup_epochs: ${warmup_epochs}
+  net:
+    _target_: src.model.model_mrm.ModelMRM
+    lane_dim: 2
+    num_lane_type: 1
+    embed_dim: 128
+    encoder_depth: 4
+    num_heads: 8
+    dropout: 0.1
+    norm_eps: 1.0e-5
+    ffn_multiplier: 4.0
+    headwise_attn_output_gate: true
+  optim:
+    lr: ${lr}
+    beta: [0.9, 0.999]
+    weight_decay: ${weight_decay}
+    epochs: ${epochs}
+    warmup_epochs: ${warmup_epochs}
+    min_lr: 1.0e-6

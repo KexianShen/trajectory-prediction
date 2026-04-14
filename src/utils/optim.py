@@ -52,3 +52,45 @@ class WarmupCosLR(_LRScheduler):
             return [lr * group["lr_scale"] for group in self.optimizer.param_groups]
 
         return [lr for _ in self.optimizer.param_groups]
+
+
+def build_weight_decay_groups(
+    module,
+    weight_decay: float,
+    extra_no_decay_keywords: tuple[str, ...] = (),
+):
+    decay = []
+    no_decay = []
+
+    def no_weight_decay(name: str) -> bool:
+        name = name.lower()
+        if name.endswith("bias"):
+            return True
+        no_decay_keywords = (
+            "norm",
+            "emb",
+            "pos",
+            "gate",
+            "mask",
+            "alpha",
+        ) + extra_no_decay_keywords
+        return any(keyword in name for keyword in no_decay_keywords)
+
+    for name, param in module.named_parameters():
+        if not param.requires_grad:
+            continue
+        if no_weight_decay(name):
+            no_decay.append(param)
+        else:
+            decay.append(param)
+
+    return [
+        {
+            "params": decay,
+            "weight_decay": weight_decay,
+        },
+        {
+            "params": no_decay,
+            "weight_decay": 0.0,
+        },
+    ]

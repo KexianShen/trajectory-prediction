@@ -21,7 +21,7 @@ class Av2ExtractorMultiAgent:
         radius: float = 150,
         save_path: Path = None,
         mode: str = "train",
-        ignore_type: List[int] = [5, 6, 7, 8, 9],
+        ignore_type: List[int] = (5, 6, 7, 8, 9),
         remove_outlier_actors: bool = True,
     ) -> None:
         self.save_path = save_path
@@ -38,8 +38,10 @@ class Av2ExtractorMultiAgent:
         except Exception:
             print(traceback.format_exc())
             print("found error while extracting data from {}".format(file))
+            return False
         save_file = self.save_path / (file.stem + ".pt")
         torch.save(data, save_file)
+        return True
 
     def get_data(self, file: Path):
         return self.process(file)
@@ -47,7 +49,7 @@ class Av2ExtractorMultiAgent:
     def process(self, raw_path: str, agent_id: str = None):
         df, am, scenario_id = load_av2_df(raw_path)
         city = df.city.values[0]
-        agent_id = "AV"
+        agent_id = "AV" if agent_id is None else agent_id
 
         ego_df = df[df["track_id"] == agent_id].iloc
         origin = torch.tensor(
@@ -62,16 +64,19 @@ class Av2ExtractorMultiAgent:
         )
 
         timestamps = list(np.sort(df["timestep"].unique()))
+        timestamp_to_idx = {timestamp: idx for idx, timestamp in enumerate(timestamps)}
         cur_df = df[df["timestep"] == timestamps[49]]
         actor_ids = list(cur_df["track_id"].unique())
+        actor_id_to_idx = {actor_id: idx for idx, actor_id in enumerate(actor_ids)}
         object_category = torch.from_numpy(cur_df["object_category"].values).float()
         cur_pos = torch.from_numpy(cur_df[["position_x", "position_y"]].values).float()
 
         scored_agents_mask = object_category > 1.5
-        out_of_range = np.linalg.norm(cur_pos - origin, axis=1) > self.radius
+        out_of_range = torch.norm(cur_pos - origin, dim=1) > self.radius
         out_of_range[scored_agents_mask] = False  # keep all scored agents
 
         actor_ids = [aid for i, aid in enumerate(actor_ids) if not out_of_range[i]]
+        actor_id_to_idx = {actor_id: idx for idx, actor_id in enumerate(actor_ids)}
         av_idx = actor_ids.index(agent_id)
         scored_agents_mask = scored_agents_mask[~out_of_range]
         num_nodes = len(actor_ids)
@@ -87,8 +92,8 @@ class Av2ExtractorMultiAgent:
         padding_mask = torch.ones(num_nodes, 110, dtype=torch.bool)
 
         for actor_id, actor_df in df.groupby("track_id"):
-            node_idx = actor_ids.index(actor_id)
-            node_steps = [timestamps.index(ts) for ts in actor_df["timestep"]]
+            node_idx = actor_id_to_idx[actor_id]
+            node_steps = [timestamp_to_idx[ts] for ts in actor_df["timestep"]]
             object_type = OBJECT_TYPE_MAP[actor_df["object_type"].values[0]]
             x_attr[node_idx, 0] = object_type
             x_attr[node_idx, 1] = actor_df["object_category"].values[0]
@@ -140,6 +145,7 @@ class Av2ExtractorMultiAgent:
             x_velocity = x_velocity[valid_actor_mask]
             x_attr = x_attr[valid_actor_mask]
             actor_ids = [aid for i, aid in enumerate(actor_ids) if valid_actor_mask[i]]
+            actor_id_to_idx = {actor_id: idx for idx, actor_id in enumerate(actor_ids)}
             scored_agents_mask = scored_agents_mask[valid_actor_mask]
             padding_mask = padding_mask[valid_actor_mask]
             num_nodes = x.shape[0]

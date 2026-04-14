@@ -1,28 +1,7 @@
-import torch
-from torch import nn
-
-from .attn import RMSNorm
-from .rope_attn import RoPESelfAttnLayer, compute_cos_sin_emb
+from .sequence import SequenceEncoder
 
 
-class ConvTokenizer(nn.Module):
-    def __init__(self, input_dim=4, emb_dim: int = 128):
-        super().__init__()
-        self.proj = nn.Conv1d(
-            input_dim, emb_dim, kernel_size=3, stride=1, padding=1, bias=True
-        )
-
-    def forward(self, x: torch.Tensor):
-        B, A, T, D = x.shape
-        x = (
-            self.proj(x.view(B * A, T, D).permute(0, 2, 1))
-            .permute(0, 2, 1)
-            .view(B, A, T, -1)
-        )
-        return x
-
-
-class TempoNet(nn.Module):
+class TempoNet(SequenceEncoder):
     def __init__(
         self,
         agent_dim: int = 4,
@@ -30,24 +9,19 @@ class TempoNet(nn.Module):
         num_heads: int = 8,
         dim: int = 128,
         norm_eps: float = 1e-5,
+        dropout: float = 0.1,
+        ffn_multiplier: float = 4.0,
         seq_len: int = 110,
-    ):
-        super().__init__()
-        self.num_layers = num_layers
-
-        self.proj_layer = ConvTokenizer(agent_dim, dim)
-        self.layers = torch.nn.ModuleList()
-        for _ in range(num_layers):
-            self.layers.append(RoPESelfAttnLayer(num_heads, dim, norm_eps))
-        self.norm = RMSNorm(dim, eps=norm_eps)
-        cos_emb, sin_emb = compute_cos_sin_emb(dim, seq_len=seq_len)
-        self.register_buffer("cos_emb", cos_emb)
-        self.register_buffer("sin_emb", sin_emb)
-
-    def forward(self, x: torch.Tensor):
-        mask = None
-
-        for layer in self.layers:
-            x = layer(x, self.cos_emb, self.sin_emb, mask)
-        out = self.norm(x)
-        return out
+        headwise_attn_output_gate: bool = True,
+    ) -> None:
+        super().__init__(
+            input_dim=agent_dim,
+            num_layers=num_layers,
+            num_heads=num_heads,
+            dim=dim,
+            norm_eps=norm_eps,
+            dropout=dropout,
+            ffn_multiplier=ffn_multiplier,
+            seq_len=seq_len,
+            headwise_attn_output_gate=headwise_attn_output_gate,
+        )

@@ -7,8 +7,6 @@ import ray
 from src.datamodule.av2_extractor_multiagent import Av2ExtractorMultiAgent
 from src.utils.ray_utils import ActorHandle, ProgressBar
 
-ray.init(num_cpus=16)
-
 
 def glob_files(data_root: Path, mode: str):
     file_root = data_root / mode
@@ -27,7 +25,10 @@ def preprocess_batch(
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(conf):
-    batch = 50
+    if not ray.is_initialized():
+        ray.init(num_cpus=conf.preprocess_num_cpus)
+
+    batch = conf.preprocess_batch_size
     data_root = Path(conf.data_root)
 
     for mode in ["train", "val", "test"]:
@@ -40,10 +41,18 @@ def main(conf):
         pb = ProgressBar(len(scenario_files), f"preprocess {mode}-set")
         pb_actor = pb.actor
 
+        tasks = []
         for i in range(0, len(scenario_files), batch):
-            preprocess_batch.remote(extractor, scenario_files[i : i + batch], pb_actor)
+            tasks.append(
+                preprocess_batch.remote(
+                    extractor, scenario_files[i : i + batch], pb_actor
+                )
+            )
 
         pb.print_until_done()
+        ray.get(tasks)
+
+    ray.shutdown()
 
 
 if __name__ == "__main__":

@@ -16,6 +16,8 @@ output: ${model.name}-${model.phase}
 
 # trainer
 num_workers: 8
+preprocess_num_cpus: 16
+preprocess_batch_size: 50
 gpus: 1
 sync_bn: true
 batch_size: 8

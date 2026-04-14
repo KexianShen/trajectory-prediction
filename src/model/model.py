@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from .layers import InterNet, SpaNet, TempoNet
+from .layers import AgentEncoder, InterNet, LaneEncoder, SpaNet, TempoNet
 
 
 class Model(nn.Module):
@@ -9,10 +9,16 @@ class Model(nn.Module):
         self,
         agent_dim=4,
         lane_dim=2,
+        num_agent_type=4,
+        num_lane_type=1,
         dim=128,
         encoder_depth=4,
         decoder_depth=1,
         num_heads=8,
+        dropout=0.1,
+        norm_eps=1e-5,
+        ffn_multiplier=4.0,
+        headwise_attn_output_gate=True,
         num_modals=6,
         future_steps=60,
     ) -> None:
@@ -20,46 +26,60 @@ class Model(nn.Module):
         self.num_modals = num_modals
         self.future_steps = future_steps
 
+        self.agent_encoder = AgentEncoder(
+            dim=dim,
+            num_agent_type=num_agent_type,
+        )
+        self.lane_encoder = LaneEncoder(
+            dim=dim,
+            num_lane_type=num_lane_type,
+        )
         self.tempo_net = TempoNet(
             agent_dim=agent_dim,
             num_layers=encoder_depth,
             num_heads=num_heads,
             dim=dim,
+            dropout=dropout,
+            norm_eps=norm_eps,
+            ffn_multiplier=ffn_multiplier,
             seq_len=50,
+            headwise_attn_output_gate=headwise_attn_output_gate,
         )
         self.spa_net = SpaNet(
-            lane_dim=lane_dim, num_layers=encoder_depth, num_heads=num_heads, dim=dim
+            lane_dim=lane_dim,
+            num_layers=encoder_depth,
+            num_heads=num_heads,
+            dim=dim,
+            dropout=dropout,
+            norm_eps=norm_eps,
+            ffn_multiplier=ffn_multiplier,
+            headwise_attn_output_gate=headwise_attn_output_gate,
         )
         self.inter_net = InterNet(
-            num_layers=encoder_depth, num_heads=num_heads, dim=dim
+            num_layers=encoder_depth,
+            num_heads=num_heads,
+            dim=dim,
+            dropout=dropout,
+            norm_eps=norm_eps,
+            ffn_multiplier=ffn_multiplier,
+            headwise_attn_output_gate=headwise_attn_output_gate,
         )
-        self.agent_pos_emb = nn.Sequential(
-            nn.Linear(4, dim),
-            nn.GELU(),
-            nn.Linear(dim, dim),
-        )
-        self.lane_pos_emb = nn.Sequential(
-            nn.Linear(4, dim),
-            nn.GELU(),
-            nn.Linear(dim, dim),
-        )
-        self.agent_type_emb = nn.Parameter(torch.Tensor(4, dim))
-        self.lane_type_emb = nn.Parameter(torch.Tensor(1, 1, dim))
-        self.modal_emb = nn.Parameter(torch.Tensor(num_modals, dim))
+        self.modal_emb = nn.Embedding(num_modals, dim)
         self.agent_squeeze = nn.Conv1d(50, 1, 3, 1, 1, bias=True)
         self.lane_squeeze = nn.Conv1d(20, 1, 3, 1, 1, bias=True)
 
         self.traj_decoder = nn.Sequential(
             nn.Linear(dim, 2 * dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(2 * dim, dim),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(dim, future_steps * 2),
         )
         self.prob_decoder = nn.Linear(dim, 1)
         self.initialize_weights()
 
     def initialize_weights(self):
+        nn.init.normal_(self.modal_emb.weight, std=0.02)
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
@@ -71,43 +91,7 @@ class Model(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    # def load_from_pretrain(self, mtm_ckpt_path, mrm_ckpt_path):
-    #     mtm_ckpt = torch.load(mtm_ckpt_path, map_location="cpu", weights_only=True)[
-    #         "state_dict"
-    #     ]
-    #     state_dict = {
-    #         k[len("net.tempo_net.") :]: v
-    #         for k, v in mtm_ckpt.items()
-    #         if k.startswith("net.tempo_net.")
-    #     }
-    #     self.tempo_net.load_state_dict(state_dict=state_dict, strict=True)
-    #     state_dict = {
-    #         k[len("net.pos_emb.") :]: v
-    #         for k, v in mtm_ckpt.items()
-    #         if k.startswith("net.pos_emb.")
-    #     }
-    #     self.agent_pos_emb.load_state_dict(state_dict=state_dict, strict=True)
-    #     self.agent_type_emb.data.copy_(mtm_ckpt["net.agent_type_emb"])
-
-    #     mrm_ckpt = torch.load(mrm_ckpt_path, map_location="cpu", weights_only=True)[
-    #         "state_dict"
-    #     ]
-    #     state_dict = {
-    #         k[len("net.spa_net.") :]: v
-    #         for k, v in mrm_ckpt.items()
-    #         if k.startswith("net.spa_net.")
-    #     }
-    #     self.spa_net.load_state_dict(state_dict=state_dict, strict=True)
-    #     self.lane_type_emb.data.copy_(mrm_ckpt["net.lane_type_emb"])
-    #     state_dict = {
-    #         k[len("net.pos_emb.") :]: v
-    #         for k, v in mrm_ckpt.items()
-    #         if k.startswith("net.pos_emb.")
-    #     }
-    #     self.lane_pos_emb.load_state_dict(state_dict=state_dict, strict=True)
-    #     return self
-
-    def forward(self, data):
+    def encode_agents(self, data):
         agent_feat = torch.cat(
             [
                 data["x"],
@@ -117,48 +101,66 @@ class Model(nn.Module):
             dim=-1,
         )
         agent_feat = self.tempo_net.proj_layer(agent_feat)
-        agent_pos_feat = torch.cat(
-            [
-                data["x_centers"],
-                torch.cos(data["x_angles"][..., 49][..., None]),
-                torch.sin(data["x_angles"][..., 49][..., None]),
-            ],
-            dim=-1,
+        agent_feat = self.agent_encoder(
+            agent_emb=agent_feat,
+            centers=data["x_centers"],
+            headings=data["x_angles"][..., 49],
+            agent_type=data["x_attr"][..., 2],
         )
-        agent_pos_emb = self.agent_pos_emb(agent_pos_feat)
-        agent_feat += agent_pos_emb.unsqueeze(2)
-
-        agent_type_emb = self.agent_type_emb[data["x_attr"][..., 2].long()]
-        agent_feat += agent_type_emb.unsqueeze(2)
         B, A, _, D = agent_feat.shape
-        agent_feat = agent_feat.view(B * A, -1, D)
-        agent_feat = self.tempo_net(agent_feat)
-        agent_feat = self.agent_squeeze(agent_feat).view(B, A, 1, D)
-        modal_emb = self.modal_emb.unsqueeze(0).unsqueeze(0)
+        agent_temporal_mask = (~data["x_padding_mask"][..., :50]).reshape(B * A, -1)
+        agent_feat = agent_feat.reshape(B * A, -1, D)
+        agent_feat = self.tempo_net(agent_feat, mask=agent_temporal_mask)
+        agent_feat = self.agent_squeeze(agent_feat).reshape(B, A, 1, D)
+        modal_emb = self.modal_emb.weight.unsqueeze(0).unsqueeze(0)
         agent_feat = agent_feat + modal_emb
-        agent_feat = agent_feat.view(B, A * self.num_modals, D)
+        agent_mask = (~data["x_key_padding_mask"]).repeat_interleave(
+            self.num_modals, dim=1
+        )
+        return agent_feat.reshape(B, A * self.num_modals, D), agent_mask
 
+    def encode_lanes(self, data):
         lane_feat = data["lane_positions"] - data["lane_centers"].unsqueeze(-2)
         lane_feat = self.spa_net.proj_layer(lane_feat)
-        lane_pos_feat = torch.cat(
-            [
-                data["lane_centers"],
-                torch.cos(data["lane_angles"][..., None]),
-                torch.sin(data["lane_angles"][..., None]),
-            ],
-            dim=-1,
+        lane_feat = self.lane_encoder(
+            lane_emb=lane_feat,
+            centers=data["lane_centers"],
+            headings=data["lane_angles"],
         )
-        lane_pos_emb = self.lane_pos_emb(lane_pos_feat)
-        lane_feat += lane_pos_emb.unsqueeze(2)
-        lane_feat += self.lane_type_emb
         B, L, P, D = lane_feat.shape
-        lane_feat = lane_feat.view(B * L, P, D)
-        lane_feat = self.spa_net(lane_feat)
-        lane_feat = self.lane_squeeze(lane_feat).view(B, L, D)
+        lane_temporal_mask = (~data["lane_padding_mask"]).reshape(B * L, P)
+        lane_feat = lane_feat.reshape(B * L, P, D)
+        lane_feat = self.spa_net(lane_feat, mask=lane_temporal_mask)
+        lane_feat = self.lane_squeeze(lane_feat).reshape(B, L, D)
+        lane_mask = ~data["lane_key_padding_mask"]
+        return lane_feat, lane_mask
 
-        agent_feat = self.inter_net(agent_feat, lane_feat)
-        y_hat = self.traj_decoder(agent_feat).view(
-            B, A, self.num_modals, self.future_steps, 2
+    def fuse_scene(self, agent_feat, lane_feat, agent_mask, lane_mask):
+        return self.inter_net(
+            agent_feat,
+            lane_feat,
+            agent_mask=agent_mask,
+            lane_mask=lane_mask,
         )
-        pi = self.prob_decoder(agent_feat).view(B, A, self.num_modals)
+
+    def decode_predictions(self, agent_feat):
+        batch_size, total_agent_modes, _ = agent_feat.shape
+        y_hat = self.traj_decoder(agent_feat).reshape(
+            batch_size,
+            total_agent_modes // self.num_modals,
+            self.num_modals,
+            self.future_steps,
+            2,
+        )
+        pi = self.prob_decoder(agent_feat).reshape(
+            batch_size,
+            total_agent_modes // self.num_modals,
+            self.num_modals,
+        )
         return {"y_hat": y_hat, "pi": pi}
+
+    def forward(self, data):
+        agent_feat, agent_mask = self.encode_agents(data)
+        lane_feat, lane_mask = self.encode_lanes(data)
+        fused_agent_feat = self.fuse_scene(agent_feat, lane_feat, agent_mask, lane_mask)
+        return self.decode_predictions(fused_agent_feat)

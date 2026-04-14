@@ -1,56 +1,34 @@
 from pathlib import Path
 
+import hydra
 import pytorch_lightning as pl
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from omegaconf import DictConfig
 from torchmetrics import MetricCollection
 
 from src.metrics import ActorMR, AvgMinADE, AvgMinFDE
-from src.utils.optim import WarmupCosLR
+from src.utils.optim import WarmupCosLR, build_weight_decay_groups
 from src.utils.submission_av2_multiagent import SubmissionAv2MultiAgent
 
-from .layers.attn import MHCA, MHSA, FeedForward, RMSNorm
-from .layers.rope_attn import RoPEMHSA
 from .model import Model
 
 
 class Trainer(pl.LightningModule):
     def __init__(
         self,
-        agent_dim=4,
-        lane_dim=2,
-        dim=128,
-        encoder_depth=4,
-        decoder_depth=1,
-        num_heads=8,
-        num_modals=6,
+        net: DictConfig,
+        optim: DictConfig,
         mtm_checkpoint: str = None,
         mrm_checkpoint: str = None,
-        lr: float = 1e-3,
         fine_tuning_ratio: float = 1e-3,
-        warmup_epochs: int = 10,
-        epochs: int = 60,
-        weight_decay: float = 1e-4,
     ) -> None:
         super(Trainer, self).__init__()
-        self.warmup_epochs = warmup_epochs
-        self.epochs = epochs
-        self.lr = lr
         self.fine_tuning_ratio = fine_tuning_ratio
-        self.weight_decay = weight_decay
         self.save_hyperparameters()
         self.submission_handler = SubmissionAv2MultiAgent()
 
-        self.net = Model(
-            agent_dim=agent_dim,
-            lane_dim=lane_dim,
-            dim=dim,
-            encoder_depth=encoder_depth,
-            decoder_depth=decoder_depth,
-            num_heads=num_heads,
-            num_modals=num_modals,
-        )
+        self.net: Model = hydra.utils.instantiate(self.hparams.net)
 
         # if mtm_checkpoint is not None and mrm_checkpoint is not None:
         #     self.net.load_from_pretrain(mtm_checkpoint, mrm_checkpoint)
@@ -187,75 +165,20 @@ class Trainer(pl.LightningModule):
         self.submission_handler.generate_submission_file()
 
     def configure_optimizers(self):
-        decay = set()
-        no_decay = set()
-        whitelist_weight_modules = (
-            nn.Linear,
-            nn.Conv1d,
-            nn.Conv2d,
-            nn.Conv3d,
-            nn.MultiheadAttention,
-            nn.LSTM,
-            nn.GRU,
-            MHCA,
-            MHSA,
-            FeedForward,
-            RoPEMHSA,
+        optim_groups = build_weight_decay_groups(
+            self,
+            weight_decay=self.hparams.optim.weight_decay,
         )
-        blacklist_weight_modules = (
-            nn.BatchNorm1d,
-            nn.BatchNorm2d,
-            nn.BatchNorm3d,
-            nn.SyncBatchNorm,
-            nn.LayerNorm,
-            nn.Embedding,
-            RMSNorm,
-        )
-        for module_name, module in self.named_modules():
-            for param_name, param in module.named_parameters():
-                full_param_name = (
-                    "%s.%s" % (module_name, param_name) if module_name else param_name
-                )
-                if "bias" in param_name:
-                    no_decay.add(full_param_name)
-                elif "weight" in param_name:
-                    if isinstance(module, whitelist_weight_modules):
-                        decay.add(full_param_name)
-                    elif isinstance(module, blacklist_weight_modules):
-                        no_decay.add(full_param_name)
-                elif not ("weight" in param_name or "bias" in param_name):
-                    no_decay.add(full_param_name)
-        param_dict = {
-            param_name: param for param_name, param in self.named_parameters()
-        }
-        inter_params = decay & no_decay
-        union_params = decay | no_decay
-        assert len(inter_params) == 0
-        assert len(param_dict.keys() - union_params) == 0
-        optim_groups = [
-            {
-                "params": [
-                    param_dict[param_name] for param_name in sorted(list(decay))
-                ],
-                "lr": self.lr,
-                "weight_decay": self.weight_decay,
-            },
-            {
-                "params": [
-                    param_dict[param_name] for param_name in sorted(list(no_decay))
-                ],
-                "lr": self.lr,
-                "weight_decay": 0.0,
-            },
-        ]
         optimizer = torch.optim.AdamW(
-            optim_groups, lr=self.lr, weight_decay=self.weight_decay
+            params=optim_groups,
+            lr=self.hparams.optim.lr,
+            betas=(self.hparams.optim.beta[0], self.hparams.optim.beta[1]),
         )
         scheduler = WarmupCosLR(
             optimizer=optimizer,
-            lr=self.lr,
-            min_lr=1e-6,
-            warmup_epochs=self.warmup_epochs,
-            epochs=self.epochs,
+            lr=self.hparams.optim.lr,
+            min_lr=self.hparams.optim.min_lr,
+            warmup_epochs=self.hparams.optim.warmup_epochs,
+            epochs=self.hparams.optim.epochs,
         )
         return [optimizer], [scheduler]

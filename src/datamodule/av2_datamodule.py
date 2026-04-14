@@ -16,6 +16,7 @@ class Av2DataModule(LightningDataModule):
         shuffle: bool = True,
         num_workers: int = 8,
         pin_memory: bool = True,
+        persistent_workers: bool = True,
         test: bool = False,
     ):
         super(Av2DataModule, self).__init__()
@@ -25,6 +26,7 @@ class Av2DataModule(LightningDataModule):
         self.shuffle = shuffle
         self.num_workers = num_workers
         self.pin_memory = pin_memory
+        self.persistent_workers = persistent_workers
         self.test = test
 
     def setup(self, stage: Optional[str] = None) -> None:
@@ -47,6 +49,7 @@ class Av2DataModule(LightningDataModule):
             shuffle=self.shuffle,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers and self.num_workers > 0,
             collate_fn=collate_fn,
         )
 
@@ -57,6 +60,7 @@ class Av2DataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers and self.num_workers > 0,
             collate_fn=collate_fn,
         )
 
@@ -67,5 +71,6 @@ class Av2DataModule(LightningDataModule):
             shuffle=False,
             num_workers=self.num_workers,
             pin_memory=self.pin_memory,
+            persistent_workers=self.persistent_workers and self.num_workers > 0,
             collate_fn=collate_fn,
         )

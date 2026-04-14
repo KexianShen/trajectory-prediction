@@ -11,9 +11,12 @@ def sort_predictions(predictions, probability, k=6):
     """
     indices = torch.argsort(probability, dim=-1, descending=True)
     sorted_prob = probability[torch.arange(probability.size(0))[:, None], indices]
-    sorted_predictions = predictions[
-        torch.arange(predictions.size(0))[:, None], indices
-    ]
+    sorted_predictions = predictions.gather(
+        1,
+        indices[..., None, None].expand(
+            -1, -1, predictions.size(-2), predictions.size(-1)
+        ),
+    )
     return sorted_predictions[:, :k], sorted_prob[:, :k]
 
 
@@ -28,7 +31,10 @@ def sort_multi_predictions(predictions, probability, k=6):
     B, A, _, _, _ = predictions.shape
     indices = torch.argsort(probability, dim=-1, descending=True)
     sorted_prob = torch.gather(probability, -1, indices)
-    sorted_predictions = predictions[
-        torch.arange(B)[..., None, None], torch.arange(A)[None, ..., None], indices, :
-    ]
+    sorted_predictions = predictions.gather(
+        2,
+        indices[..., None, None].expand(
+            -1, -1, -1, predictions.size(-2), predictions.size(-1)
+        ),
+    )
     return sorted_predictions[:, :, :k], sorted_prob[:, :, :k]

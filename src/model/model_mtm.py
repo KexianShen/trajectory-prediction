@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .layers import AgentEncoder
 from .layers.tempo_net import TempoNet
+from .modeling_utils import random_token_masking
 
 
 class ModelMTM(nn.Module):
@@ -10,30 +12,40 @@ class ModelMTM(nn.Module):
         self,
         agent_dim=4,
         embed_dim=128,
+        num_agent_type=4,
         encoder_depth=4,
         num_heads=8,
+        dropout=0.1,
+        norm_eps=1e-5,
+        ffn_multiplier=4.0,
+        headwise_attn_output_gate=True,
     ) -> None:
         super(ModelMTM, self).__init__()
+        self.agent_encoder = AgentEncoder(
+            dim=embed_dim,
+            num_agent_type=num_agent_type,
+        )
         self.tempo_net = TempoNet(
-            agent_dim=agent_dim, num_layers=encoder_depth, num_heads=num_heads
+            agent_dim=agent_dim,
+            num_layers=encoder_depth,
+            num_heads=num_heads,
+            dim=embed_dim,
+            dropout=dropout,
+            norm_eps=norm_eps,
+            ffn_multiplier=ffn_multiplier,
+            seq_len=110,
+            headwise_attn_output_gate=headwise_attn_output_gate,
         )
-        self.pos_emb = nn.Sequential(
-            nn.Linear(4, embed_dim),
-            nn.GELU(),
-            nn.Linear(embed_dim, embed_dim),
-        )
-        self.agent_type_emb = nn.Parameter(torch.Tensor(4, embed_dim))
         self.mtm_mask_token = nn.Parameter(torch.Tensor(1, embed_dim))
         self.decoder = nn.Sequential(
             nn.Linear(embed_dim, embed_dim * 4),
-            nn.ReLU(),
+            nn.GELU(),
             nn.Linear(embed_dim * 4, agent_dim),
         )
 
         self.initialize_weights()
 
     def initialize_weights(self):
-        nn.init.normal_(self.agent_type_emb, std=0.02)
         nn.init.normal_(self.mtm_mask_token, std=0.02)
 
         self.apply(self._init_weights)
@@ -54,48 +66,7 @@ class ModelMTM(nn.Module):
         }
         return self.load_state_dict(state_dict=state_dict, strict=False)
 
-    @staticmethod
-    def agent_random_masking(
-        tokens: torch.Tensor,
-        mask: torch.Tensor,
-        mask_token: torch.Tensor,
-        mask_ratio=0.6,
-        eligible_threshold=5,
-    ):
-        """
-        Args:
-            tokens: (batch_size, num_agent, num_time, embed_dim)
-            mask: (batch_size, seq_len)
-            mask_ratio: float
-            eligible_threshold: int
-        Returns:
-            masked_tokens: (batch_size, seq_len, embed_dim)
-        """
-        masked_tokens = tokens.clone()
-        num_B_A = mask.sum(-1)
-        mask_B_A = num_B_A > eligible_threshold
-        idx_B_A = mask_B_A.nonzero()
-        mask_BA_T = mask[mask_B_A]
-        num_mask_BA = (num_B_A[mask_B_A] * mask_ratio).int()
-        idx_mask = []
-        for i in range(idx_B_A.size(0)):
-            idx_T = torch.nonzero(mask_BA_T[i] == True)
-            idx = torch.cat(
-                [
-                    idx_B_A[i].repeat(num_mask_BA[i], 1),
-                    idx_T[torch.randperm(idx_T.size(0))[: num_mask_BA[i]]],
-                ],
-                dim=-1,
-            )
-            idx_mask.append(idx)
-        idx_mask = torch.cat(idx_mask, dim=0)
-        masked_tokens[idx_mask[:, 0], idx_mask[:, 1], idx_mask[:, 2]] = (
-            mask_token.type_as(masked_tokens)
-        )
-        return masked_tokens, idx_mask
-
-    def forward(self, data):
-        agent_padding_mask = ~data["x_padding_mask"]
+    def encode_agents(self, data):
         agent_feat = torch.cat(
             [
                 torch.cat([data["x"], data["y"]], dim=2),
@@ -106,27 +77,43 @@ class ModelMTM(nn.Module):
         )
         original_agent_feat = agent_feat.clone()
         agent_feat = self.tempo_net.proj_layer(agent_feat)
-        pos_feat = torch.cat(
-            [
-                data["x_centers"],
-                torch.cos(data["x_angles"][..., 49][..., None]),
-                torch.sin(data["x_angles"][..., 49][..., None]),
-            ],
-            dim=-1,
+        agent_feat = self.agent_encoder(
+            agent_emb=agent_feat,
+            centers=data["x_centers"],
+            headings=data["x_angles"][..., 49],
+            agent_type=data["x_attr"][..., 2],
         )
-        pos_emb = self.pos_emb(pos_feat)
-        agent_feat += pos_emb.unsqueeze(2)
+        return agent_feat, original_agent_feat
 
-        agent_type_emb = self.agent_type_emb[data["x_attr"][..., 2].long()]
-        agent_feat += agent_type_emb.unsqueeze(2)
-
-        masked_tokens, idx_mask = self.agent_random_masking(
-            agent_feat, agent_padding_mask, self.mtm_mask_token
+    def forward(self, data):
+        agent_padding_mask = ~data["x_padding_mask"]
+        agent_feat, original_agent_feat = self.encode_agents(data)
+        masked_tokens, idx_mask = random_token_masking(
+            agent_feat,
+            agent_padding_mask,
+            self.mtm_mask_token,
+            mask_ratio=0.6,
+            eligible_threshold=5,
         )
         B, A, T, D = masked_tokens.shape
-        masked_tokens = masked_tokens.view(B * A, T, D)
-        agent_feat = self.tempo_net(masked_tokens)
-        y_hat = self.decoder(agent_feat).view(B, A, T, -1)[
+        masked_tokens = masked_tokens.reshape(B * A, T, D)
+        agent_feat = self.tempo_net(
+            masked_tokens,
+            mask=agent_padding_mask.reshape(B * A, T),
+        )
+        if idx_mask.numel() == 0:
+            loss = agent_feat.sum() * 0.0
+            return {
+                "loss": loss,
+                "y_hat": torch.empty(
+                    (0, original_agent_feat.size(-1)),
+                    device=original_agent_feat.device,
+                    dtype=original_agent_feat.dtype,
+                ),
+                "x": original_agent_feat,
+                "idx_mask": idx_mask,
+            }
+        y_hat = self.decoder(agent_feat).reshape(B, A, T, -1)[
             idx_mask[:, 0], idx_mask[:, 1], idx_mask[:, 2]
         ]
 
