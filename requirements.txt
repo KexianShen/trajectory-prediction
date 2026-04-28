@@ -1,5 +1,6 @@
-pytorch-lightning
-hydra-core
 av2
+hydra-core
+lightning
+matplotlib
 ray
 tensorboard

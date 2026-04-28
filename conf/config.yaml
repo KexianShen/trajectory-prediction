@@ -10,25 +10,23 @@ save_top_k: 2
 
 data_root:
 checkpoint:
-mrm_checkpoint:
-mtm_checkpoint:
-output: ${model.name}-${model.phase}
+output: ${model.name}
+
+preprocess_num_cpus: 16
+preprocess_batch_size: 50
 
 # trainer
 num_workers: 8
-preprocess_num_cpus: 16
-preprocess_batch_size: 50
 gpus: 1
-sync_bn: true
+sync_bn: false
 batch_size: 8
 epochs: 40
 precision: bf16-mixed
-warmup_epochs: 10
+warmup_epochs: 5
 fast_dev_run: 0
 
 # optimizer
 lr: 0.001
-fine_tuning_ratio: 0.001
 weight_decay: 1e-4
 gradient_clip_val: 5
 gradient_clip_algorithm: norm
@@ -36,7 +34,5 @@ gradient_clip_algorithm: norm
 limit_train_batches:
 limit_val_batches:
 limit_test_batches:
-log_model: all
 test: false
 
-wandb: disable

@@ -1,6 +1,8 @@
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Optional
 
 import torch
+from torch.distributed import ProcessGroup
 from torchmetrics import Metric
 
 
@@ -12,8 +14,8 @@ class MR(Metric):
         self,
         miss_threshold: float = 2.0,
         dist_sync_on_step: bool = False,
-        process_group: Optional[Any] = None,
-        dist_sync_fn: Callable = None,
+        process_group: ProcessGroup | None = None,
+        dist_sync_fn: Callable[..., object] | None = None,
     ) -> None:
         super(MR, self).__init__(
             dist_sync_on_step=dist_sync_on_step,
@@ -24,7 +26,7 @@ class MR(Metric):
         self.add_state("count", default=torch.tensor(0), dist_reduce_fx="sum")
         self.miss_threshold = miss_threshold
 
-    def update(self, outputs: Dict[str, torch.Tensor], target: torch.Tensor) -> None:
+    def update(self, outputs: dict[str, torch.Tensor], target: torch.Tensor) -> None:
         with torch.no_grad():
             pred = outputs["y_hat"]
             missed_pred = (

@@ -1,35 +1,26 @@
 import os
 
 import hydra
-import pytorch_lightning as pl
 import torch
 from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
-from pytorch_lightning.callbacks import (
+from lightning import Trainer, seed_everything
+from lightning.pytorch.callbacks import (
     LearningRateMonitor,
     ModelCheckpoint,
     RichProgressBar,
 )
-from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
+from lightning.pytorch.loggers import TensorBoardLogger
+from omegaconf import DictConfig
 
 from src.utils.callback import FindUnusedParams
 
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
-def main(conf):
-    pl.seed_everything(conf.seed, workers=True)
+def main(conf: DictConfig) -> None:
+    seed_everything(conf.seed, workers=True)
     output_dir = HydraConfig.get().runtime.output_dir
-
-    if conf.wandb != "disable":
-        logger = WandbLogger(
-            project="trajectory_prediction",
-            name=conf.output,
-            mode=conf.wandb,
-            log_model="all",
-            resume=conf.checkpoint is not None,
-        )
-    else:
-        logger = TensorBoardLogger(save_dir=output_dir, name="logs")
+    logger = TensorBoardLogger(save_dir=output_dir, name="logs")
 
     callbacks = [
         ModelCheckpoint(
@@ -47,7 +38,7 @@ def main(conf):
     if conf.fast_dev_run:
         callbacks.append(FindUnusedParams())
 
-    trainer = pl.Trainer(
+    trainer = Trainer(
         logger=logger,
         gradient_clip_val=conf.gradient_clip_val,
         gradient_clip_algorithm=conf.gradient_clip_algorithm,
@@ -65,7 +56,7 @@ def main(conf):
 
     model = instantiate(conf.model.target, _recursive_=False)
     datamodule = instantiate(conf.datamodule)
-    trainer.fit(model, datamodule, ckpt_path=conf.checkpoint)
+    trainer.fit(model, datamodule, ckpt_path=conf.checkpoint, weights_only=False)
 
 
 if __name__ == "__main__":

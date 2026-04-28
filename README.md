@@ -6,16 +6,6 @@
 - Efficient on Embedded Devices: Designed to be friendly and effective on embedded devices.
 
 <p align="center">
-    <img src="https://raw.githubusercontent.com/KexianShen/trajectory-prediction/media/mrm.png?raw=true"><br/>
-    <em>Masked road model</em>
-</p>
-
-<p align="center">
-    <img src="https://raw.githubusercontent.com/KexianShen/trajectory-prediction/media/mtm.png?raw=true"><br/>
-    <em>Masked trajectory model</em>
-</p>
-
-<p align="center">
     <img src="https://raw.githubusercontent.com/KexianShen/trajectory-prediction/media/all.png?raw=true"><br/>
     <em>Trajectory prediction</em>
 </p>
@@ -56,6 +46,7 @@ data_root
 > [!TIP]
 >
 > Download data with `s5cmd`.
+>
 > ```bash
 > conda install s5cmd -c conda-forge
 >
@@ -70,13 +61,7 @@ python preprocess.py
 ## Train
 
 ```bash
-# Train mrm and mtm models
-python train.py model=model_mrm epochs=20
-
-python train.py model=model_mtm epochs=20
-
-# Set mrm_checkpoint, mtm_checkpoint in conf/config.yaml for combined training
-python train.py monitor=val_AvgMinFDE
+python train.py monitor=val/AvgMinADE
 ```
 
 ## Eval
@@ -87,4 +72,5 @@ python eval.py test=true
 ```
 
 ## Credits
+
 [forecast-mae](https://github.com/jchengai/forecast-mae), [sept](https://arxiv.org/abs/2309.15289)

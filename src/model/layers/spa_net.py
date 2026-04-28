@@ -12,7 +12,6 @@ class SpaNet(SequenceEncoder):
         dim: int = 128,
         norm_eps: float = 1e-5,
         dropout: float = 0.1,
-        ffn_multiplier: float = 4.0,
         seq_len: int = 20,
         headwise_attn_output_gate: bool = True,
     ) -> None:
@@ -23,7 +22,6 @@ class SpaNet(SequenceEncoder):
             dim=dim,
             norm_eps=norm_eps,
             dropout=dropout,
-            ffn_multiplier=ffn_multiplier,
             seq_len=seq_len,
             headwise_attn_output_gate=headwise_attn_output_gate,
         )

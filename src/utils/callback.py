@@ -1,12 +1,13 @@
-from pytorch_lightning.callbacks import Callback
+import lightning as L
+from lightning import Callback
 
 
 class FindUnusedParams(Callback):
-    def __init__(self):
+    def __init__(self) -> None:
         super(FindUnusedParams, self).__init__()
 
     def on_after_backward(
-        self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
+        self, trainer: "L.Trainer", pl_module: "L.LightningModule"
     ) -> None:
         print("Finding unused parameters ...")
         for name, p in pl_module.named_parameters():

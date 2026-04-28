@@ -42,6 +42,7 @@ class LaneEncoder(nn.Module):
     ) -> None:
         super().__init__()
         self.pos_emb = FourierEmbedding(input_dim=4, dim=dim)
+        self.attr_emb = FourierEmbedding(input_dim=3, dim=dim)
         self.type_emb = nn.Embedding(num_lane_type, dim)
         self.reset_parameters()
 
@@ -53,6 +54,7 @@ class LaneEncoder(nn.Module):
         lane_emb: torch.Tensor,
         centers: torch.Tensor,
         headings: torch.Tensor,
+        lane_attr: torch.Tensor,
     ) -> torch.Tensor:
         pos_feat = torch.cat(
             [centers, headings.cos().unsqueeze(-1), headings.sin().unsqueeze(-1)],
@@ -63,4 +65,5 @@ class LaneEncoder(nn.Module):
         )
         lane_emb = lane_emb + self.pos_emb(pos_feat).unsqueeze(2)
         lane_emb = lane_emb + self.type_emb(lane_type).unsqueeze(2)
+        lane_emb = lane_emb + self.attr_emb(lane_attr.float()).unsqueeze(2)
         return lane_emb

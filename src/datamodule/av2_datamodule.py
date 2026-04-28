@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Optional
 
-from pytorch_lightning import LightningDataModule
+from lightning import LightningDataModule
 from torch.utils.data import DataLoader as TorchDataLoader
 
 from .av2_dataset import Av2Dataset, collate_fn
@@ -18,7 +18,7 @@ class Av2DataModule(LightningDataModule):
         pin_memory: bool = True,
         persistent_workers: bool = True,
         test: bool = False,
-    ):
+    ) -> None:
         super(Av2DataModule, self).__init__()
         self.data_root = Path(data_root)
         self.data_folder = data_folder
@@ -42,7 +42,7 @@ class Av2DataModule(LightningDataModule):
                 data_root=self.data_root / self.data_folder, cached_split="test"
             )
 
-    def train_dataloader(self):
+    def train_dataloader(self) -> TorchDataLoader:
         return TorchDataLoader(
             self.train_dataset,
             batch_size=self.batch_size,
@@ -53,7 +53,7 @@ class Av2DataModule(LightningDataModule):
             collate_fn=collate_fn,
         )
 
-    def val_dataloader(self):
+    def val_dataloader(self) -> TorchDataLoader:
         return TorchDataLoader(
             self.val_dataset,
             batch_size=self.batch_size,
@@ -64,7 +64,7 @@ class Av2DataModule(LightningDataModule):
             collate_fn=collate_fn,
         )
 
-    def test_dataloader(self):
+    def test_dataloader(self) -> TorchDataLoader:
         return TorchDataLoader(
             self.test_dataset,
             batch_size=self.batch_size,

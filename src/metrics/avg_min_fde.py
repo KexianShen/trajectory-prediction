@@ -1,6 +1,8 @@
-from typing import Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import Optional
 
 import torch
+from torch.distributed import ProcessGroup
 from torchmetrics import Metric
 
 from .utils import sort_multi_predictions
@@ -12,10 +14,10 @@ class AvgMinFDE(Metric):
 
     def __init__(
         self,
-        k=6,
+        k: int = 6,
         dist_sync_on_step: bool = False,
-        process_group: Optional[Any] = None,
-        dist_sync_fn: Callable = None,
+        process_group: ProcessGroup | None = None,
+        dist_sync_fn: Callable[..., object] | None = None,
     ) -> None:
         super(AvgMinFDE, self).__init__(
             dist_sync_on_step=dist_sync_on_step,
@@ -28,7 +30,7 @@ class AvgMinFDE(Metric):
 
     def update(
         self,
-        outputs: Dict[str, torch.Tensor],
+        outputs: dict[str, torch.Tensor],
         target: torch.Tensor,
         scored_mask: torch.Tensor,
     ) -> None:

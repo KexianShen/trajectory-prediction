@@ -1,6 +1,5 @@
 import traceback
 from pathlib import Path
-from typing import List
 
 import av2.geometry.interpolate as interp_utils
 import numpy as np
@@ -19,9 +18,9 @@ class Av2ExtractorMultiAgent:
     def __init__(
         self,
         radius: float = 150,
-        save_path: Path = None,
+        save_path: Path | None = None,
         mode: str = "train",
-        ignore_type: List[int] = (5, 6, 7, 8, 9),
+        ignore_type: list[int] | tuple[int, ...] = (5, 6, 7, 8, 9),
         remove_outlier_actors: bool = True,
     ) -> None:
         self.save_path = save_path
@@ -30,7 +29,7 @@ class Av2ExtractorMultiAgent:
         self.remove_outlier_actors = remove_outlier_actors
         self.ignore_type = ignore_type
 
-    def save(self, file: Path):
+    def save(self, file: Path) -> bool:
         assert self.save_path is not None
 
         try:
@@ -43,10 +42,14 @@ class Av2ExtractorMultiAgent:
         torch.save(data, save_file)
         return True
 
-    def get_data(self, file: Path):
+    def get_data(self, file: Path) -> dict[str, object]:
         return self.process(file)
 
-    def process(self, raw_path: str, agent_id: str = None):
+    def process(
+        self,
+        raw_path: Path,
+        agent_id: str | None = None,
+    ) -> dict[str, object]:
         df, am, scenario_id = load_av2_df(raw_path)
         city = df.city.values[0]
         agent_id = "AV" if agent_id is None else agent_id
@@ -207,7 +210,14 @@ class Av2ExtractorMultiAgent:
         origin: torch.Tensor,
         rotate_mat: torch.Tensor,
         radius: float,
-    ):
+    ) -> tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+    ]:
         lane_segments = am.get_nearby_lane_segments(query_pos.numpy(), radius)
 
         lane_positions, is_intersections, lane_attrs = [], [], []

@@ -1,19 +1,23 @@
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import Dataset
 
-from .av2_extractor_multiagent import Av2ExtractorMultiAgent
+if TYPE_CHECKING:
+    from .av2_extractor_multiagent import Av2ExtractorMultiAgent
+
+SceneData = dict[str, object]
 
 
 class Av2Dataset(Dataset):
     def __init__(
         self,
         data_root: Path,
-        cached_split: str = None,
-        extractor: Av2ExtractorMultiAgent = None,
-    ):
+        cached_split: str | None = None,
+        extractor: "Av2ExtractorMultiAgent | None" = None,
+    ) -> None:
         super(Av2Dataset, self).__init__()
 
         if cached_split is not None:
@@ -36,7 +40,7 @@ class Av2Dataset(Dataset):
     def __len__(self) -> int:
         return len(self.file_list)
 
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int) -> SceneData:
         if self.load:
             data = torch.load(self.file_list[index], weights_only=False)
         else:
@@ -45,8 +49,8 @@ class Av2Dataset(Dataset):
         return data
 
 
-def collate_fn(batch):
-    data = {}
+def collate_fn(batch: list[SceneData]) -> SceneData:
+    data: SceneData = {}
 
     for key in [
         "x",
@@ -91,8 +95,8 @@ def collate_fn(batch):
     return data
 
 
-def collate_fn_cuda(batch):
-    data = {}
+def collate_fn_cuda(batch: list[SceneData]) -> SceneData:
+    data: SceneData = {}
 
     for key in [
         "x",

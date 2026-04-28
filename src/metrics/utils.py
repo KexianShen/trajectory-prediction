@@ -1,7 +1,9 @@
 import torch
 
 
-def sort_predictions(predictions, probability, k=6):
+def sort_predictions(
+    predictions: torch.Tensor, probability: torch.Tensor, k: int = 6
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Sort the predictions based on the probability of each mode.
     Args:
         predictions (torch.Tensor): The predicted trajectories [b, k, t, 2].
@@ -20,7 +22,9 @@ def sort_predictions(predictions, probability, k=6):
     return sorted_predictions[:, :k], sorted_prob[:, :k]
 
 
-def sort_multi_predictions(predictions, probability, k=6):
+def sort_multi_predictions(
+    predictions: torch.Tensor, probability: torch.Tensor, k: int = 6
+) -> tuple[torch.Tensor, torch.Tensor]:
     """Sort the predictions based on the probability of each mode.
     Args:
         predictions (torch.Tensor): The predicted trajectories [b, a, k, t, 2].

@@ -53,7 +53,7 @@ class ProgressBar:
     description: str
     pbar: tqdm
 
-    def __init__(self, total: int, description: str = ""):
+    def __init__(self, total: int, description: str = "") -> None:
         # Ray actors don't seem to play nice with mypy, generating
         # a spurious warning for the following line,
         # which we need to suppress. The code is fine.

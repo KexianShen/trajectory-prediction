@@ -1,10 +1,15 @@
+import time
 from pathlib import Path
+from typing import Dict
 
 import hydra
-import pytorch_lightning as pl
+import numpy as np
 import torch
+import torch.distributed as dist
 import torch.nn.functional as F
+from lightning import LightningModule
 from omegaconf import DictConfig
+from torch.optim import AdamW, Optimizer
 from torchmetrics import MetricCollection
 
 from src.metrics import ActorMR, AvgMinADE, AvgMinFDE
@@ -14,32 +19,21 @@ from src.utils.submission_av2_multiagent import SubmissionAv2MultiAgent
 from .model import Model
 
 
-class Trainer(pl.LightningModule):
-    def __init__(
-        self,
-        net: DictConfig,
-        optim: DictConfig,
-        mtm_checkpoint: str = None,
-        mrm_checkpoint: str = None,
-        fine_tuning_ratio: float = 1e-3,
-    ) -> None:
+class Trainer(LightningModule):
+    def __init__(self, net: DictConfig, optim: DictConfig) -> None:
         super(Trainer, self).__init__()
-        self.fine_tuning_ratio = fine_tuning_ratio
         self.save_hyperparameters()
         self.submission_handler = SubmissionAv2MultiAgent()
 
         self.net: Model = hydra.utils.instantiate(self.hparams.net)
 
-        # if mtm_checkpoint is not None and mrm_checkpoint is not None:
-        #     self.net.load_from_pretrain(mtm_checkpoint, mrm_checkpoint)
-
         metrics = MetricCollection([AvgMinADE(), AvgMinFDE(), ActorMR()])
-        self.val_metrics = metrics.clone(prefix="val_")
+        self.val_metrics = metrics.clone(prefix="val/")
 
-    def forward(self, data):
+    def forward(self, data: Dict) -> dict[str, torch.Tensor]:
         return self.net(data)
 
-    def predict(self, data):
+    def predict(self, data: Dict) -> np.ndarray:
         with torch.no_grad():
             out = self.net(data)
         last_position = data["x_positions"][:, :, -1, :].view(1, -1, 1, 2)
@@ -68,7 +62,9 @@ class Trainer(pl.LightningModule):
             )
         return predict_pos
 
-    def cal_loss(self, outputs, data):
+    def cal_loss(
+        self, outputs: dict[str, torch.Tensor], data: Dict
+    ) -> dict[str, torch.Tensor | float]:
         y_hat, pi = outputs["y_hat"], outputs["pi"]
         x_scored, y, y_padding_mask = (
             data["x_scored"],
@@ -81,10 +77,11 @@ class Trainer(pl.LightningModule):
         valid_mask[~x_scored] = False
         valid_mask = valid_mask.unsqueeze(2).float()
 
-        l2_norm = (
-            torch.norm(y_hat[..., :2] - y.unsqueeze(2), dim=-1) * valid_mask
-        ).sum(dim=-1)
-        best_mode = torch.argmin(l2_norm, dim=-1)
+        with torch.no_grad():
+            l2_norm = (
+                torch.norm(y_hat[..., :2] - y.unsqueeze(2), dim=-1) * valid_mask
+            ).sum(dim=-1)
+            best_mode = torch.argmin(l2_norm, dim=-1)
 
         reg_mask = ~y_padding_mask
         y_hat_best = y_hat[
@@ -109,7 +106,7 @@ class Trainer(pl.LightningModule):
 
         return out
 
-    def training_step(self, data, batch_idx):
+    def training_step(self, data: Dict, batch_idx: int) -> torch.Tensor:
         out = self(data)
         res = self.cal_loss(out, data)
 
@@ -127,7 +124,7 @@ class Trainer(pl.LightningModule):
 
         return res["loss"]
 
-    def validation_step(self, data, batch_idx):
+    def validation_step(self, data: Dict, batch_idx: int) -> None:
         out = self(data)
         res = self.cal_loss(out, data)
         metrics = self.val_metrics(out, data["y"], data["x_scored"])
@@ -152,24 +149,55 @@ class Trainer(pl.LightningModule):
             sync_dist=True,
         )
 
+    def on_validation_end(self) -> None:
+        if self.trainer.sanity_checking:
+            return
+        val_AvgMinADE = self.trainer.callback_metrics.get("val/AvgMinADE")
+        if val_AvgMinADE is not None:
+            self.logger.log_metrics(
+                {"hp_metric": val_AvgMinADE}, step=self.current_epoch
+            )
+
     def on_test_start(self) -> None:
         save_dir = Path("./submission")
         save_dir.mkdir(exist_ok=True)
-        self.submission_handler = SubmissionAv2MultiAgent(save_dir=save_dir)
+        file_stem = self._build_submission_stem()
+        self.submission_handler = SubmissionAv2MultiAgent(
+            save_dir=save_dir,
+            file_stem=file_stem,
+        )
 
-    def test_step(self, data, batch_idx) -> None:
+    def test_step(self, data: Dict, batch_idx: int) -> None:
         out = self(data)
         self.submission_handler.format_data(data, out["y_hat"], out["pi"])
 
     def on_test_end(self) -> None:
-        self.submission_handler.generate_submission_file()
+        rank = self.global_rank if self.trainer.world_size > 1 else 0
+        self.submission_handler.save_partial_file(rank)
+        self._barrier()
+        if self.trainer.is_global_zero:
+            self.submission_handler.merge_partial_files(
+                world_size=self.trainer.world_size,
+            )
+        self._barrier()
 
-    def configure_optimizers(self):
+    def _build_submission_stem(self) -> str:
+        file_stem = f"multi_agent_{time.strftime('%Y-%m-%d-%H-%M', time.localtime())}"
+        if dist.is_available() and dist.is_initialized():
+            shared = [file_stem if self.trainer.is_global_zero else None]
+            dist.broadcast_object_list(shared, src=0)
+            file_stem = shared[0]
+        return file_stem
+
+    def _barrier(self) -> None:
+        if dist.is_available() and dist.is_initialized():
+            dist.barrier()
+
+    def configure_optimizers(self) -> tuple[list[Optimizer], list[WarmupCosLR]]:
         optim_groups = build_weight_decay_groups(
-            self,
-            weight_decay=self.hparams.optim.weight_decay,
+            self, weight_decay=self.hparams.optim.weight_decay
         )
-        optimizer = torch.optim.AdamW(
+        optimizer = AdamW(
             params=optim_groups,
             lr=self.hparams.optim.lr,
             betas=(self.hparams.optim.beta[0], self.hparams.optim.beta[1]),

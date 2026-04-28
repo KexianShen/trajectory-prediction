@@ -5,10 +5,10 @@ from torch import nn
 
 def compute_cos_sin_emb(
     dim: int = 128,
-    t: torch.Tensor = None,
-    seq_len: int = None,
+    t: torch.Tensor | None = None,
+    seq_len: int | None = None,
     base: float = 10000.0,
-):
+) -> tuple[torch.Tensor, torch.Tensor]:
     if t is None:
         t = torch.arange(seq_len)[:, None]
     t = t.float()
@@ -19,10 +19,10 @@ def compute_cos_sin_emb(
 
 
 def compute_2d_cos_sin_emb(
-    t: torch.Tensor = None,
+    t: torch.Tensor | None = None,
     dim: int = 128,
     base: float = 10000.0,
-):
+) -> tuple[torch.Tensor, torch.Tensor]:
     freqs = 1.0 / (base ** (torch.arange(0, dim // 2, 2).float() / (dim // 2)))
     freqs = freqs.to(t.device)
     freqs_x, freqs_y = t[..., :1] * freqs, t[..., 1:2] * freqs
@@ -32,7 +32,7 @@ def compute_2d_cos_sin_emb(
     return cos_emb, sin_emb
 
 
-def rotate_half(x: torch.Tensor):
+def rotate_half(x: torch.Tensor) -> torch.Tensor:
     half_dim = x.size(-1) // 2
     x1 = x[..., :half_dim]
     x2 = x[..., half_dim:]
@@ -44,9 +44,9 @@ def apply_rotary_emb(
     xk: torch.Tensor,
     cos_emb_q: torch.Tensor,
     sin_emb_q: torch.Tensor,
-    cos_emb_k: torch.Tensor = None,
-    sin_emb_k: torch.Tensor = None,
-):
+    cos_emb_k: torch.Tensor | None = None,
+    sin_emb_k: torch.Tensor | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
     xq_out = xq * cos_emb_q + rotate_half(xq) * sin_emb_q
     if cos_emb_k is None and sin_emb_k is None:
         cos_emb_k, sin_emb_k = cos_emb_q, sin_emb_q
@@ -55,21 +55,26 @@ def apply_rotary_emb(
 
 
 class RMSNorm(nn.Module):
-    def __init__(self, dim: int, eps: float = 1e-8):
+    def __init__(self, dim: int, eps: float = 1e-8) -> None:
         super().__init__()
         self.eps = eps
         self.w = nn.Parameter(torch.ones(dim))
 
-    def _norm(self, x: torch.Tensor):
+    def _norm(self, x: torch.Tensor) -> torch.Tensor:
         return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         output = self._norm(x).type_as(x)
         return output * self.w
 
 
 class FourierEmbedding(nn.Module):
-    def __init__(self, input_dim: int = 3, dim: int = 128, num_freqs: int = 64):
+    def __init__(
+        self,
+        input_dim: int = 3,
+        dim: int = 128,
+        num_freqs: int = 64,
+    ) -> None:
         super().__init__()
         self.input_dim = input_dim
 
@@ -85,7 +90,7 @@ class FourierEmbedding(nn.Module):
         )
         self.wo = nn.Sequential(RMSNorm(dim), nn.SiLU(), nn.Linear(dim, dim))
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         x_ = x[..., None] * self.freqs.weight * 2 * torch.pi
         x_ = torch.cat([x_.cos(), x_.sin(), x[..., None]], dim=-1)
         x_ = torch.stack([self.w[i](x_[..., i, :]) for i in range(self.input_dim)])
@@ -93,14 +98,14 @@ class FourierEmbedding(nn.Module):
 
 
 class FeedForward(nn.Module):
-    def __init__(self, dim: int, hidden_dim: int):
+    def __init__(self, dim: int, hidden_dim: int) -> None:
         super().__init__()
 
         self.w1 = nn.Linear(dim, hidden_dim, bias=False)
         self.w2 = nn.Linear(hidden_dim, dim, bias=False)
         self.w3 = nn.Linear(dim, hidden_dim, bias=False)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.w2(F.silu(self.w1(x)) * self.w3(x))
 
 
@@ -111,7 +116,7 @@ class MHSA(nn.Module):
         dim: int = 128,
         dropout: float = 0.1,
         headwise_attn_output_gate: bool = True,
-    ):
+    ) -> None:
         super().__init__()
         if dim % num_heads != 0:
             raise ValueError(f"dim={dim} must be divisible by num_heads={num_heads}")
@@ -132,11 +137,11 @@ class MHSA(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        pos_emb: torch.Tensor = None,
-        cos_emb: torch.Tensor = None,
-        sin_emb: torch.Tensor = None,
-        mask: torch.Tensor = None,
-    ):
+        pos_emb: torch.Tensor | None = None,
+        cos_emb: torch.Tensor | None = None,
+        sin_emb: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         batch_size, seq_len, _ = x.shape
         xq, xk, xv = self.wq(x), self.wk(x), self.wv(x)
 
@@ -180,7 +185,7 @@ class MHCA(nn.Module):
         dim: int = 128,
         dropout: float = 0.1,
         headwise_attn_output_gate: bool = True,
-    ):
+    ) -> None:
         super().__init__()
         if dim % num_heads != 0:
             raise ValueError(f"dim={dim} must be divisible by num_heads={num_heads}")
@@ -203,14 +208,14 @@ class MHCA(nn.Module):
         xq: torch.Tensor,
         xk: torch.Tensor,
         xv: torch.Tensor,
-        pos_emb_q: torch.Tensor = None,
-        pos_emb_k: torch.Tensor = None,
-        cos_emb_q: torch.Tensor = None,
-        sin_emb_q: torch.Tensor = None,
-        cos_emb_k: torch.Tensor = None,
-        sin_emb_k: torch.Tensor = None,
-        mask: torch.Tensor = None,
-    ):
+        pos_emb_q: torch.Tensor | None = None,
+        pos_emb_k: torch.Tensor | None = None,
+        cos_emb_q: torch.Tensor | None = None,
+        sin_emb_q: torch.Tensor | None = None,
+        cos_emb_k: torch.Tensor | None = None,
+        sin_emb_k: torch.Tensor | None = None,
+        mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         batch_size, query_len, _ = xq.shape
         xq, xk, xv = self.wq(xq), self.wk(xk), self.wv(xv)
 
@@ -261,9 +266,8 @@ class SelfAttnLayer(nn.Module):
         dim: int = 128,
         norm_eps: float = 1e-6,
         dropout: float = 0.1,
-        ffn_multiplier: float = 4.0,
         headwise_attn_output_gate: bool = True,
-    ):
+    ) -> None:
         super().__init__()
 
         self.mhsa = MHSA(
@@ -274,7 +278,7 @@ class SelfAttnLayer(nn.Module):
         )
         self.mhsa_norm = RMSNorm(dim=dim, eps=norm_eps)
         self.mhsa_dropout = nn.Dropout(p=dropout)
-        self.ffn = FeedForward(dim=dim, hidden_dim=int(ffn_multiplier * dim))
+        self.ffn = FeedForward(dim=dim, hidden_dim=4 * dim)
         self.ffn_norm = RMSNorm(dim, eps=norm_eps)
         self.ffn_dropout = nn.Dropout(p=dropout)
         self.out_norm = RMSNorm(dim, eps=norm_eps)
@@ -282,11 +286,11 @@ class SelfAttnLayer(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        mask: torch.Tensor = None,
-        pos_emb: torch.Tensor = None,
-        cos_emb: torch.Tensor = None,
-        sin_emb: torch.Tensor = None,
-    ):
+        mask: torch.Tensor | None = None,
+        pos_emb: torch.Tensor | None = None,
+        cos_emb: torch.Tensor | None = None,
+        sin_emb: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         x_ = self.mhsa(self.mhsa_norm(x), pos_emb, cos_emb, sin_emb, mask)
         x = x + self.mhsa_dropout(x_)
         x_ = self.ffn(self.ffn_norm(x))
@@ -301,9 +305,8 @@ class CrossAttnLayer(nn.Module):
         dim: int = 128,
         norm_eps: float = 1e-6,
         dropout: float = 0.1,
-        ffn_multiplier: float = 4.0,
         headwise_attn_output_gate: bool = True,
-    ):
+    ) -> None:
         super().__init__()
 
         self.mhca = MHCA(
@@ -316,7 +319,7 @@ class CrossAttnLayer(nn.Module):
         self.mhca_norm_k = RMSNorm(dim=dim, eps=norm_eps)
         self.mhca_norm_v = RMSNorm(dim=dim, eps=norm_eps)
         self.mhca_dropout = nn.Dropout(p=dropout)
-        self.ffn = FeedForward(dim=dim, hidden_dim=int(ffn_multiplier * dim))
+        self.ffn = FeedForward(dim=dim, hidden_dim=4 * dim)
         self.ffn_norm = RMSNorm(dim=dim, eps=norm_eps)
         self.ffn_dropout = nn.Dropout(p=dropout)
 
@@ -325,14 +328,14 @@ class CrossAttnLayer(nn.Module):
         xq: torch.Tensor,
         xk: torch.Tensor,
         xv: torch.Tensor,
-        mask: torch.Tensor = None,
-        pos_emb_q: torch.Tensor = None,
-        pos_emb_k: torch.Tensor = None,
-        cos_emb_q: torch.Tensor = None,
-        sin_emb_q: torch.Tensor = None,
-        cos_emb_k: torch.Tensor = None,
-        sin_emb_k: torch.Tensor = None,
-    ):
+        mask: torch.Tensor | None = None,
+        pos_emb_q: torch.Tensor | None = None,
+        pos_emb_k: torch.Tensor | None = None,
+        cos_emb_q: torch.Tensor | None = None,
+        sin_emb_q: torch.Tensor | None = None,
+        cos_emb_k: torch.Tensor | None = None,
+        sin_emb_k: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         xq_ = self.mhca(
             self.mhca_norm_q(xq),
             self.mhca_norm_k(xk),

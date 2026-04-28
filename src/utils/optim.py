@@ -1,11 +1,20 @@
 import math
+from typing import Any
 
+from torch import nn
+from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
 
 class WarmupCosLR(_LRScheduler):
     def __init__(
-        self, optimizer, min_lr, lr, warmup_epochs, epochs, last_epoch=-1
+        self,
+        optimizer: Optimizer,
+        min_lr: float,
+        lr: float,
+        warmup_epochs: int,
+        epochs: int,
+        last_epoch: int = -1,
     ) -> None:
         self.min_lr = min_lr
         self.lr = lr
@@ -13,7 +22,7 @@ class WarmupCosLR(_LRScheduler):
         self.warmup_epochs = warmup_epochs
         super(WarmupCosLR, self).__init__(optimizer, last_epoch)
 
-    def state_dict(self):
+    def state_dict(self) -> dict[str, Any]:
         """Returns the state of the scheduler as a :class:`dict`.
 
         It contains an entry for every variable in self.__dict__ which
@@ -23,7 +32,7 @@ class WarmupCosLR(_LRScheduler):
             key: value for key, value in self.__dict__.items() if key != "optimizer"
         }
 
-    def load_state_dict(self, state_dict):
+    def load_state_dict(self, state_dict: dict[str, Any]) -> None:
         """Loads the schedulers state.
 
         Args:
@@ -32,11 +41,11 @@ class WarmupCosLR(_LRScheduler):
         """
         self.__dict__.update(state_dict)
 
-    def get_init_lr(self):
+    def get_init_lr(self) -> float:
         lr = self.lr / self.warmup_epochs
         return lr
 
-    def get_lr(self):
+    def get_lr(self) -> list[float]:
         if self.last_epoch < self.warmup_epochs:
             lr = self.lr * (self.last_epoch + 1) / self.warmup_epochs
         else:
@@ -55,10 +64,10 @@ class WarmupCosLR(_LRScheduler):
 
 
 def build_weight_decay_groups(
-    module,
+    module: nn.Module,
     weight_decay: float,
     extra_no_decay_keywords: tuple[str, ...] = (),
-):
+) -> list[dict[str, float | list[nn.Parameter]]]:
     decay = []
     no_decay = []
 

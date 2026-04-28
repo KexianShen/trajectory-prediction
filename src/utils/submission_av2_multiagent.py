@@ -8,18 +8,21 @@ from .av2_multiagent_submission_protocol.submission import ChallengeSubmission
 
 
 class SubmissionAv2MultiAgent:
-    def __init__(self, save_dir: str = "") -> None:
+    def __init__(self, save_dir: str = "", file_stem: str | None = None) -> None:
         stamp = time.strftime("%Y-%m-%d-%H-%M", time.localtime())
-        self.submission_file = Path(save_dir) / f"multi_agent_{stamp}.parquet"
+        self.save_dir = Path(save_dir)
+        self.save_dir.mkdir(exist_ok=True, parents=True)
+        self.file_stem = file_stem or f"multi_agent_{stamp}"
+        self.submission_file = self.save_dir / f"{self.file_stem}.parquet"
         self.challenge_submission = ChallengeSubmission(predictions={})
 
     @torch.no_grad()
     def format_data(
         self,
-        data: dict,
+        data: dict[str, object],
         trajectory: Tensor,
         probability: Tensor,
-        normalized_probability=False,
+        normalized_probability: bool = False,
     ) -> None:
         """
         trajectory: (B, A, K, 60, 2) or (B, K, A, 60, 2)
@@ -98,9 +101,38 @@ class SubmissionAv2MultiAgent:
                 scenario_predictions,
             )
 
-    def generate_submission_file(self):
+    def partial_file(self, rank: int) -> Path:
+        return self.save_dir / f"{self.file_stem}.rank{rank}.pt"
+
+    def save_partial_file(self, rank: int) -> Path:
+        partial_file = self.partial_file(rank)
+        torch.save(self.challenge_submission.predictions, partial_file)
+        print(f"partial submission saved to {partial_file}")
+        return partial_file
+
+    def generate_submission_file(self) -> None:
         print(
             "generating submission file for argoverse 2.0 motion forecasting challenge"
         )
         self.challenge_submission.to_parquet(self.submission_file)
         print(f"file saved to {self.submission_file}")
+
+    def merge_partial_files(self, world_size: int, cleanup: bool = True) -> None:
+        merged_predictions = {}
+        partial_files = [self.partial_file(rank) for rank in range(world_size)]
+        missing_files = [path for path in partial_files if not path.exists()]
+        if missing_files:
+            raise FileNotFoundError(
+                f"missing partial submission files: {missing_files}"
+            )
+
+        for partial_file in partial_files:
+            rank_predictions = torch.load(partial_file, weights_only=False)
+            merged_predictions.update(rank_predictions)
+
+        self.challenge_submission = ChallengeSubmission(predictions=merged_predictions)
+        self.generate_submission_file()
+
+        if cleanup:
+            for partial_file in partial_files:
+                partial_file.unlink(missing_ok=True)

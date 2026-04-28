@@ -39,7 +39,7 @@ LaneTypeMap = {
 }
 
 
-def load_av2_df(scenario_file: Path):
+def load_av2_df(scenario_file: Path) -> tuple[pd.DataFrame, ArgoverseStaticMap, str]:
     scenario_id = scenario_file.stem.split("_")[-1]
     df = pd.read_parquet(scenario_file)
     static_map = ArgoverseStaticMap.from_json(
